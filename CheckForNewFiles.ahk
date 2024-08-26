@@ -8,7 +8,6 @@ try
     menu, tray, icon, %TrayIcon%
 
 ;-- PART-1   prepare variables -----------------------------------------------------------------------------------
-OnMessage(0x404, Func("AHK_NOTIFYICON").Bind(hGui))
 iniFile := A_ScriptDir "\settings\settings.ini"
 
 ; Ensure the settings directory exists
@@ -34,7 +33,9 @@ if (SubStr(UrlWithFiles, 0) = "/")
 ;-- PART-2  --------------------------------------------------------------------
 
 GuiCreate:
-Gui, New, +Resize
+Gui, New, +Resize +hwndHGUI
+OnMessage(0x404, Func("AHK_NOTIFYICON").Bind(hGui))
+
 Gui, Add, Text, center w100, Extensions:
 Gui, Add, Edit, ys vExtensions gSaveSettings w300, %extensions%
 gui, add, text, ys,(comma-separated without dot)
@@ -48,8 +49,7 @@ Gui, Add, Edit, ys vUrlWithFiles gSaveSettings w700, %UrlWithFiles%
 Gui, Add, Button, xs w100 section gPickFolder, Download Dir ...
 Gui, Add, Edit, ys vDownloadDir gSaveSettings w700, %downloadDir%
 
-Gui, Add, Button, xs w100 section gGuiCancel w100, Cancel
-Gui, Add, Button, ys w100 gCheckAgain w100, Check now
+Gui, Add, Button, xs section w100 gCheckAgain w100, Check now
 
 Gui, Add, Button, ys w100 gSelectAll, Select All
 Gui, Add, Button, ys w100 gDeselectAll, Deselect All
@@ -76,6 +76,8 @@ Gui, Add, Edit, ys vRegexReplace gUpdateListView w300, ; Input field for regex r
 Gui, Add, Button, ys w100 gClearRegexReplace, Clear Replace
 
 Gui, Add, ListView, xs vFileListView r20 w800, File Name|URL
+
+Gui, Add, Button, xs w100 gGuiCancel w100, Quit
 
 ; Populate ListView
 GOSUB, UpdateListView
@@ -157,15 +159,16 @@ CheckAgain:
     GOSUB, UpdateListView
 
     ; Show status in the status bar
-    if (fileNames = "")
+    if (total1 = 0)
     {
         SB_SetText("No new files found.")
     }
     else
     {
-        SB_SetText(total2 . " new files found.")
+        SB_SetText(total1 . " new files found.")
     }
 
+    Gui, Show
 
 return
 
@@ -311,6 +314,7 @@ UpdateListView:
     GuiControlGet, regexReplace, , RegexReplace
     GuiControlGet, filterText, , FilterText
     GuiControlGet, regexFilter, , RegexFilter
+    filteredCount := 0
     Loop, Parse, res, `n, `r
     {
         if (A_LoopField != "")
@@ -329,6 +333,7 @@ UpdateListView:
                 if (RegExMatch(newFileName, filterText) || RegExMatch(T1, filterText))
                 {
                     LV_Add("", newFileName, T1)
+                    filteredCount++
                 }
             }
             else
@@ -337,12 +342,29 @@ UpdateListView:
                 if (InStr(newFileName, filterText) || InStr(T1, filterText))
                 {
                     LV_Add("", newFileName, T1)
+                    filteredCount++
                 }
             }
         }
     }
     LV_ModifyCol(1, "AutoHdr")
     LV_ModifyCol(2, "AutoHdr")
+
+    ; Update status bar
+    if (filteredCount = 0)
+    {
+        if (filterText != "")
+            SB_SetText("No files match the filter.")
+        else
+            SB_SetText("No new files found.")
+    }
+    else
+    {
+        if (filterText != "")
+            SB_SetText(filteredCount . " files match the filter out of " . total1 . " new files found.")
+        else
+            SB_SetText(total1 . " new files found.")
+    }
 return
 
 SelectAll:
@@ -436,6 +458,6 @@ OpenOrActivateFolder(folderPath) {
 AHK_NOTIFYICON(hGui, wp, lp) {
    static WM_LBUTTONDOWN := 0x201
    if (lp = WM_LBUTTONDOWN)
-      gosub, CheckAgain
+      Gui, % hGui ":Show"
 }
 ;================= END script =====================================================================================
