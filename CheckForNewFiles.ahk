@@ -1,8 +1,9 @@
+;-------- based on:
+;-------------------------------------------------------------------------------------------
 ;-------- saved at Montag, 11. Mai 2015 09:05:58 --------------
 ;-------- http://www.autohotkey.com/board/topic/50123-extract-all-urls-from-page-source/ ---
 
-;modified=20230802
-
+#SingleInstance, force
 TrayIcon := StrReplace("settings\" . A_ScriptName, ".ahk", ".ico")
 try
     menu, tray, icon, %TrayIcon%
@@ -36,12 +37,44 @@ GuiCreate:
 Gui, New, +Resize +hwndHGUI
 OnMessage(0x404, Func("AHK_NOTIFYICON").Bind(hGui))
 
+; mouse over control to show tooltip
+; variable ControlName_TT := "tooltip text"
+OnMessage(0x200, "WM_MOUSEMOVE")
+
+WM_MOUSEMOVE(){
+	static CurrControl, PrevControl, _TT
+	CurrControl := A_GuiControl
+	If (CurrControl <> PrevControl){
+			SetTimer, DisplayToolTip, -300 	; shorter wait, shows the tooltip quicker
+			PrevControl := CurrControl
+	}
+	return
+	
+	DisplayToolTip:
+	try
+			ToolTip % %CurrControl%_TT
+	catch
+			ToolTip
+	SetTimer, RemoveToolTip, -7000
+	return
+	
+	RemoveToolTip:
+	ToolTip
+	return
+}
+
 Gui, Add, Text, center w100, Extensions:
 Gui, Add, Edit, ys vExtensions gSaveSettings w300, %extensions%
 gui, add, text, ys,(comma-separated without dot)
 
 Gui, Add, Text, center xs w100 section, Relative URL:
 Gui, Add, Edit, ys vMainUrl gSaveSettings w700, %mainUrl%
+MainUrl_TT=
+(
+if file link path is relative to a website
+like /folder/file.txt 
+instead of www.url.com/fodler/file.txt
+)
 
 Gui, Add, Text, center xs w100 section, Files URL:
 Gui, Add, Edit, ys vUrlWithFiles gSaveSettings w700, %UrlWithFiles%
@@ -67,13 +100,13 @@ Gui, Add, Edit, ys vFilterText gFilterChanged w300,
 Gui, Add, Button, ys w100 gClearFilter, Clear Filter
 Gui, Add, CheckBox, ys vRegexFilter gFilterChanged, Use Regex 
 
-Gui, Add, Text, center xs w100 section, Regex Find:
-Gui, Add, Edit, ys vRegexFind gUpdateListView w300, ; Input field for regex find pattern
-Gui, Add, Button, ys w100 gClearRegexFind, Clear Find
+; Gui, Add, Text, center xs w100 section, Regex Find:
+; Gui, Add, Edit, ys vRegexFind gUpdateListView w300, ; Input field for regex find pattern
+; Gui, Add, Button, ys w100 gClearRegexFind, Clear Find
 
-Gui, Add, Text, center xs w100 section, Regex Replace:
-Gui, Add, Edit, ys vRegexReplace gUpdateListView w300, ; Input field for regex replace text
-Gui, Add, Button, ys w100 gClearRegexReplace, Clear Replace
+; Gui, Add, Text, center xs w100 section, Regex Replace:
+; Gui, Add, Edit, ys vRegexReplace gUpdateListView w300, ; Input field for regex replace text
+; Gui, Add, Button, ys w100 gClearRegexReplace, Clear Replace
 
 Gui, Add, ListView, xs vFileListView r20 w800, File Name|URL
 
@@ -136,7 +169,8 @@ CheckAgain:
 
         ; Check if a file with a similar name exists
         fileExists := false
-        Loop, Files, %downloadDir%\*%fileName%
+
+        Loop, Files, %downloadDir%\*
         {
             existingFile := A_LoopFileName
             ; Compare filenames
@@ -146,6 +180,7 @@ CheckAgain:
                 break
             }
         }
+        
 
         ; Collect new files only if they do not exist
         if !fileExists
@@ -190,6 +225,28 @@ GuiCancel:
 GuiSubmit:
     Gui, Submit, NoHide
     gosub SaveSettings
+
+    ; Check if downloadDir exists
+    if !FileExist(downloadDir)
+        {
+            MsgBox, 4, Directory Not Found, The directory "%downloadDir%" does not exist.`nWould you like to create it?
+            IfMsgBox, No
+            {
+                MsgBox, Cancelled, Operation cancelled by user.
+                return
+            }
+            ; Attempt to create the directory
+            FileCreateDir, %downloadDir%
+            if !FileExist(downloadDir)
+            {
+                MsgBox, 16, Error, Failed to create the directory. Please check your permissions or specify a different path.
+                return
+            }
+            else
+            {
+                MsgBox, 64, Directory Created, The directory "%downloadDir%" was created successfully.
+            }
+        }
 
     ; Collect selected files
     selectedFiles := []
@@ -264,20 +321,6 @@ GuiSubmit:
         newContent := newContent . existingContent
         FileDelete, %f2% ; Optional: delete the file first to ensure clean write
         FileAppend, %newContent%, %f2%
-
-        ; Open the folder or activate the existing window
-        ifexist, %downloadDir%
-        {
-            ; Check if the folder window exists
-            IfWinExist, ahk_class CabinetWClass, %downloadDir%
-            {
-                WinActivate ; Activate the existing window
-            }
-            else
-            {
-                run, %downloadDir% ; Open the folder if the window doesn't exist
-            }
-        }
 
     }
     else
@@ -395,6 +438,7 @@ SaveSettings:
     IniWrite, %UrlWithFiles%, %iniFile%, Settings, UrlWithFiles
     IniWrite, %downloadDir%, %iniFile%, Settings, DownloadDir
     IniWrite, %printFiles%, %iniFile%, Settings, PrintFiles
+
 return
 
 LoadSettings:
@@ -407,6 +451,7 @@ LoadSettings:
         IniWrite, https://rodospublictransport.gr/index.php?c=schedule&p=pdf, %iniFile%, Settings, UrlWithFiles
         IniWrite, %A_ScriptDir%, %iniFile%, Settings, DownloadDir
         IniWrite, 1, %iniFile%, Settings, PrintFiles
+
     }
 
     ; Read settings from settings.ini
@@ -415,6 +460,7 @@ LoadSettings:
     IniRead, UrlWithFiles, %iniFile%, Settings, UrlWithFiles, https://rodospublictransport.gr/index.php?c=schedule&p=pdf
     IniRead, downloadDir, %iniFile%, Settings, DownloadDir, %A_ScriptDir%
     IniRead, printFiles, %iniFile%, Settings, PrintFiles, 1
+    
     ; Convert read value to integer
     printFiles := printFiles ? 1 : 0
 return
