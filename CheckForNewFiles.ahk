@@ -1,31 +1,23 @@
-;-------- based on:
-;-------------------------------------------------------------------------------------------
-;-------- saved at Montag, 11. Mai 2015 09:05:58 --------------
-;-------- http://www.autohotkey.com/board/topic/50123-extract-all-urls-from-page-source/ ---
 
 #SingleInstance, force
+
 TrayIcon := StrReplace("settings\" . A_ScriptName, ".ahk", ".ico")
 try
     menu, tray, icon, %TrayIcon%
 
 ;-- PART-1   prepare variables -----------------------------------------------------------------------------------
-iniFile := A_ScriptDir "\settings\settings.ini"
 
-; Ensure the settings directory exists
 if not FileExist(A_ScriptDir "\settings")
     FileCreateDir, %A_ScriptDir%\settings
 
-; Load settings from INI file
-gosub LoadSettings
-
-fd := A_ScriptDir  ;- where to download
-f2 := fd "settings\log.txt"  ;- if wanted write URL from each PDF to a file
-olderDir := fd "\older"  ;- directory to move old files
-
-ifnotexist, %fd%  ;- create folder
-    filecreatedir, %fd%
+olderDir := A_ScriptDir "\older"  ;- directory to move old files
 ifnotexist, %olderDir%
     filecreatedir, %olderDir%
+    
+iniFile := A_ScriptDir "\settings\settings.ini"
+logFile := A_ScriptDir "\settings\log.txt"  ; Path to the log file
+
+gosub LoadSettings
 
 ; Remove trailing slash from UrlWithFiles if present
 if (SubStr(UrlWithFiles, 0) = "/")
@@ -94,6 +86,9 @@ else
     checkedState := ""
 
 Gui, Add, CheckBox, ys+4 vPrintFiles gSaveSettings %checkedState%, Print files after download
+
+Gui, Add, Button, ys w100 gClearLog, Clear Log  ; Add this line to create a Clear Log button
+
 
 Gui, Add, Text, center xs w100 section, Filter:
 Gui, Add, Edit, ys vFilterText gFilterChanged w300, 
@@ -170,17 +165,24 @@ CheckAgain:
         ; Check if a file with a similar name exists
         fileExists := false
 
-        Loop, Files, %downloadDir%\*
+        ; Check if the file is already logged
+        if (IsFileLogged(newFileName))
         {
-            existingFile := A_LoopFileName
-            ; Compare filenames
-            if (fileName = existingFile)
+            fileExists := true
+        }
+        else
+        {
+            Loop, Files, %downloadDir%\*
             {
-                fileExists := true
-                break
+                existingFile := A_LoopFileName
+                ; Compare filenames
+                if (fileName = existingFile)
+                {
+                    fileExists := true
+                    break
+                }
             }
         }
-        
 
         ; Collect new files only if they do not exist
         if !fileExists
@@ -207,6 +209,30 @@ CheckAgain:
 
 return
 
+; Function to check if a file is already logged in the log file
+IsFileLogged(fileName) {
+
+    ; Ensure log file exists before reading
+    if not FileExist(logFile)
+        return false
+
+    FileRead, logContent, %logFile%
+    if RegExMatch(logContent, "^" fileName "`s*,", _)
+        return true
+
+    return false
+}
+
+LogDownload(fileName, dateTime) {
+    
+    ; Ensure the settings directory exists
+    if not FileExist(A_ScriptDir "\settings")
+        FileCreateDir, %A_ScriptDir%\settings
+
+    ; Append the filename and date to the log file
+    FileAppend, %fileName%`, %dateTime%`n, %logFile%
+}
+
 ClearFilter:
     GuiControl,, filterText,  ; Clear the Regex Find field
 return
@@ -228,25 +254,25 @@ GuiSubmit:
 
     ; Check if downloadDir exists
     if !FileExist(downloadDir)
+    {
+        MsgBox, 4, Directory Not Found, The directory "%downloadDir%" does not exist.`nWould you like to create it?
+        IfMsgBox, No
         {
-            MsgBox, 4, Directory Not Found, The directory "%downloadDir%" does not exist.`nWould you like to create it?
-            IfMsgBox, No
-            {
-                MsgBox, Cancelled, Operation cancelled by user.
-                return
-            }
-            ; Attempt to create the directory
-            FileCreateDir, %downloadDir%
-            if !FileExist(downloadDir)
-            {
-                MsgBox, 16, Error, Failed to create the directory. Please check your permissions or specify a different path.
-                return
-            }
-            else
-            {
-                MsgBox, 64, Directory Created, The directory "%downloadDir%" was created successfully.
-            }
+            MsgBox, Cancelled, Operation cancelled by user.
+            return
         }
+        ; Attempt to create the directory
+        FileCreateDir, %downloadDir%
+        if !FileExist(downloadDir)
+        {
+            MsgBox, 16, Error, Failed to create the directory. Please check your permissions or specify a different path.
+            return
+        }
+        else
+        {
+            MsgBox, 64, Directory Created, The directory "%downloadDir%" was created successfully.
+        }
+    }
 
     ; Collect selected files
     selectedFiles := []
@@ -277,6 +303,9 @@ GuiSubmit:
             SplashImage,, w600 x10 y130 C01 CWsilver FS10 ZH0 M2, Download I=%i% / Total=%total1% files, Now downloading=n%newFileName%nto %downloadDir%, Escape to break, Lucida Console
             FilePath := downloadDir "\" newFileName
             UrlDownloadToFile, %url%, %FilePath%
+
+            ; Log the download to the log file
+            LogDownload(newFileName, TimeString)
 
             if (printFiles)
             {
@@ -310,17 +339,17 @@ GuiSubmit:
         }
 
         ; Prepend new content to log file
-        if (FileExist(f2))
+        if (FileExist(logFile))
         {
-            FileRead, existingContent, %f2%
+            FileRead, existingContent, %logFile%
         }
         else
         {
             existingContent := ""
         }
         newContent := newContent . existingContent
-        FileDelete, %f2% ; Optional: delete the file first to ensure clean write
-        FileAppend, %newContent%, %f2%
+        FileDelete, %logFile% ; Optional: delete the file first to ensure clean write
+        FileAppend, %newContent%, %logFile%
 
     }
     else
@@ -335,6 +364,7 @@ GuiSubmit:
     Gosub CheckAgain
 
 return
+
 
 SelectFolder:
     FileSelectFolder, downloadDir
@@ -506,4 +536,10 @@ AHK_NOTIFYICON(hGui, wp, lp) {
    if (lp = WM_LBUTTONDOWN)
       Gui, % hGui ":Show"
 }
-;================= END script =====================================================================================
+
+ClearLog:
+    if FileExist(logFile)  ; Check if the log file exists
+        FileDelete, %logFile%  ; Delete the log file
+        
+    MsgBox, 64, Log Cleared, The log file has been cleared successfully.
+return
