@@ -1,4 +1,6 @@
 
+;https://github.com/alexofrhodes
+
 #SingleInstance, force
 
 TrayIcon := StrReplace("settings\" . A_ScriptName, ".ahk", ".ico")
@@ -56,56 +58,62 @@ WM_MOUSEMOVE(){
 }
 
 Gui, Add, Text, center w100, Extensions:
-Gui, Add, Edit, ys vExtensions gSaveSettings w300, %extensions%
-gui, add, text, ys,(comma-separated without dot)
+Gui, Add, Edit, ys vExtensions gSaveSettings w800, %extensions%
+Extensions_TT := "comma-separated without dot"
 
 Gui, Add, Text, center xs w100 section, Relative URL:
-Gui, Add, Edit, ys vMainUrl gSaveSettings w700, %mainUrl%
+Gui, Add, Edit, ys vMainUrl gSaveSettings w800, %mainUrl%
 MainUrl_TT=
 (
 if file link path is relative to a website
 like /folder/file.txt 
-instead of www.url.com/fodler/file.txt
+instead of www.url.com/folder/file.txt
 )
 
 Gui, Add, Text, center xs w100 section, Files URL:
-Gui, Add, Edit, ys vUrlWithFiles gSaveSettings w700, %UrlWithFiles%
+Gui, Add, Edit, ys vUrlWithFiles gSaveSettings w800, %UrlWithFiles%
 
 Gui, Add, Button, xs w100 section gPickFolder, Download Dir ...
-Gui, Add, Edit, ys vDownloadDir gSaveSettings w700, %downloadDir%
+Gui, Add, Edit, ys vDownloadDir gSaveSettings w750, %downloadDir%
+Gui, Add, Button, ys w40 gOpenFolder, Open
 
-Gui, Add, Button, xs section w100 gCheckAgain w100, Check now
+Gui, Add, Button, xs section w100 gCheckAgain w100, PARSE
+Gui, Add, Button, xs  w100 gGuiSubmit, DOWNLOAD
 
-Gui, Add, Button, ys w100 gSelectAll, Select All
-Gui, Add, Button, ys w100 gDeselectAll, Deselect All
-Gui, Add, Button, ys w100 gGuiSubmit, Download selected
 
 If (printFiles)
     checkedState := "Checked"
 else
     checkedState := ""
 
-Gui, Add, CheckBox, ys+4 vPrintFiles gSaveSettings %checkedState%, Print files after download
-
-Gui, Add, Button, ys w100 gClearLog, Clear Log  ; Add this line to create a Clear Log button
+Gui, Add, CheckBox, xs vPrintFiles gSaveSettings %checkedState%, Print after DL
 
 
-Gui, Add, Text, center xs w100 section, Filter:
-Gui, Add, Edit, ys vFilterText gFilterChanged w300, 
+Gui, Add, Button, xs w100 gSelectAll, Select All
+Gui, Add, Button, xs w100 gDeselectAll, Deselect All
+
+Gui, Add, Button, xs w100 gClearLog, Clear Log 
+
+Gui, Add, Button, xs w100 gGuiCancel w100, Quit
+
+
+
+Gui, Add, Text, center ys section w100 section, Filter:
+Gui, Add, Edit, ys vFilterText gFilterChanged w500, 
 Gui, Add, Button, ys w100 gClearFilter, Clear Filter
-Gui, Add, CheckBox, ys vRegexFilter gFilterChanged, Use Regex 
+Gui, Add, CheckBox, ys+4 vRegexFilter gFilterChanged, Use Regex 
 
-; Gui, Add, Text, center xs w100 section, Regex Find:
-; Gui, Add, Edit, ys vRegexFind gUpdateListView w300, ; Input field for regex find pattern
-; Gui, Add, Button, ys w100 gClearRegexFind, Clear Find
+Gui, Add, Text, center xs w100 section, Regex Find:
+Gui, Add, Edit, ys vRegexFind gUpdateListView w500, 
+Gui, Add, Button, ys w100 gClearRegexFind, Clear Find
 
-; Gui, Add, Text, center xs w100 section, Regex Replace:
-; Gui, Add, Edit, ys vRegexReplace gUpdateListView w300, ; Input field for regex replace text
-; Gui, Add, Button, ys w100 gClearRegexReplace, Clear Replace
+Gui, Add, Text, center xs w100 section, Regex Replace:
+Gui, Add, Edit, ys vRegexReplace gUpdateListView w500, 
+Gui, Add, Button, ys w100 gClearRegexReplace, Clear Replace
 
 Gui, Add, ListView, xs vFileListView r20 w800, File Name|URL
 
-Gui, Add, Button, xs w100 gGuiCancel w100, Quit
+
 
 ; Populate ListView
 GOSUB, UpdateListView
@@ -166,29 +174,11 @@ CheckAgain:
         fileExists := false
 
         ; Check if the file is already logged
-        if (IsFileLogged(newFileName))
-        {
+        if (IsFileLogged(newFileName)){
             fileExists := true
-        }
-        else
-        {
-            Loop, Files, %downloadDir%\*
-            {
-                existingFile := A_LoopFileName
-                ; Compare filenames
-                if (fileName = existingFile)
-                {
-                    fileExists := true
-                    break
-                }
-            }
-        }
-
-        ; Collect new files only if they do not exist
-        if !fileExists
-        {
-            total1++
-            res .= newUrl "|" newFileName "`r`n"  ; Add each found URL and new file name to variable RES
+        }else{
+                total1++
+                res .= newUrl "|" newFileName "`r`n"  ; Add each found URL and new file name to variable RES
         }
     }
 
@@ -211,7 +201,7 @@ return
 
 ; Function to check if a file is already logged in the log file
 IsFileLogged(fileName) {
-
+    global
     ; Ensure log file exists before reading
     if not FileExist(logFile)
         return false
@@ -224,13 +214,18 @@ IsFileLogged(fileName) {
 }
 
 LogDownload(fileName, dateTime) {
-    
+    global
     ; Ensure the settings directory exists
     if not FileExist(A_ScriptDir "\settings")
         FileCreateDir, %A_ScriptDir%\settings
 
-    ; Append the filename and date to the log file
+    ; existingContent := ""
+    ; if (FileExist(logFile))
+    ;     FileRead, existingContent, %logFile%
+        
     FileAppend, %fileName%`, %dateTime%`n, %logFile%
+    ; FileAppend, %existingContent%`n%fileName%`, %dateTime%`n, %logFile%
+
 }
 
 ClearFilter:
@@ -274,7 +269,6 @@ GuiSubmit:
         }
     }
 
-    ; Collect selected files
     selectedFiles := []
     Loop
     {
@@ -283,29 +277,30 @@ GuiSubmit:
             break
         LV_GetText(fileName, Row, 1)
         LV_GetText(url, Row, 2)
-        selectedFiles.Push({url: url, newFileName: fileName})
+
+        selectedFiles.Push({url: url, FileName: fileName})
     }
 
-    ; Proceed with downloading and printing selected files
     if (selectedFiles.MaxIndex() > 0)
     {
         i := 0
         total1 := selectedFiles.MaxIndex()
         FormatTime, TimeString,, yyyy MM dd hh:mm:ss tt
-        newContent := "nn" . TimeString . "nn"
 
         for index, fileInfo in selectedFiles
         {
             i++
             url := fileInfo.url
-            newFileName := fileInfo.newFileName
-            newContent .= url "|" newFileName "rn"
+
+            newFileName := fileInfo.FileName
+
             SplashImage,, w600 x10 y130 C01 CWsilver FS10 ZH0 M2, Download I=%i% / Total=%total1% files, Now downloading=n%newFileName%nto %downloadDir%, Escape to break, Lucida Console
             FilePath := downloadDir "\" newFileName
             UrlDownloadToFile, %url%, %FilePath%
 
             ; Log the download to the log file
-            LogDownload(newFileName, TimeString)
+            SplitPath, url, fileNameFromUrl
+            LogDownload(fileNameFromUrl, TimeString)
 
             if (printFiles)
             {
@@ -337,20 +332,6 @@ GuiSubmit:
 
             SplashImage, off
         }
-
-        ; Prepend new content to log file
-        if (FileExist(logFile))
-        {
-            FileRead, existingContent, %logFile%
-        }
-        else
-        {
-            existingContent := ""
-        }
-        newContent := newContent . existingContent
-        FileDelete, %logFile% ; Optional: delete the file first to ensure clean write
-        FileAppend, %newContent%, %logFile%
-
     }
     else
     {
@@ -371,9 +352,6 @@ SelectFolder:
     if (downloadDir != "")
         GuiControl,, DownloadDir, %downloadDir%
     return
-
-
-
 
 FilterChanged:
     GuiControlGet, filterText, , FilterText
@@ -521,6 +499,12 @@ PickFolder:
 return
 
 ;---------------- function openoractivatewindow -------------------------------------------------------------------
+
+OpenFolder:
+    GuiControlGet, DownloadDir, , DownloadDir
+    OpenOrActivateFolder(DownloadDir)
+Return
+
 OpenOrActivateFolder(folderPath) {
    for Window in ComObjCreate("Shell.Application").Windows
       continue
