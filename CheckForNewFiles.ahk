@@ -1,7 +1,18 @@
+/* 
+https://github.com/alexofrhodes
+anastasioualex@gmail.com
 
-;https://github.com/alexofrhodes
+Description:
+            List new files from a website           (filtering out those already downloaded)
+            Rename by regex before downloading      (the check for wether they were downloaded is by logging their original name to log.txt)
+            Filter the new list by text or regex    (//TODO save/load regex pairs)
+            Support links like www.url.com/file.txt and relative links like "/folder/file.txt"  (//TODO save/load mainUrl/filesURL)
+            Download selected files
+            Optionally print                        (//TODO improve print function to allow for more filetypes, currently for pdf only)
+*/
 
 #SingleInstance, force
+#include includes\Anchor.ahk
 
 TrayIcon := StrReplace("settings\" . A_ScriptName, ".ahk", ".ico")
 try
@@ -11,10 +22,6 @@ try
 
 if not FileExist(A_ScriptDir "\settings")
     FileCreateDir, %A_ScriptDir%\settings
-
-olderDir := A_ScriptDir "\older"  ;- directory to move old files
-ifnotexist, %olderDir%
-    filecreatedir, %olderDir%
     
 iniFile := A_ScriptDir "\settings\settings.ini"
 logFile := A_ScriptDir "\settings\log.txt"  ; Path to the log file
@@ -28,7 +35,7 @@ if (SubStr(UrlWithFiles, 0) = "/")
 ;-- PART-2  --------------------------------------------------------------------
 
 GuiCreate:
-Gui, New, +Resize +hwndHGUI
+Gui, New, +Resize +MinSize +hwndHGUI
 OnMessage(0x404, Func("AHK_NOTIFYICON").Bind(hGui))
 
 ; mouse over control to show tooltip
@@ -58,11 +65,11 @@ WM_MOUSEMOVE(){
 }
 
 Gui, Add, Text, center w100, Extensions:
-Gui, Add, Edit, ys vExtensions gSaveSettings w800, %extensions%
+Gui, Add, Edit, ys vExtensions gSaveSettings w600, %extensions%
 Extensions_TT := "comma-separated without dot"
 
 Gui, Add, Text, center xs w100 section, Relative URL:
-Gui, Add, Edit, ys vMainUrl gSaveSettings w800, %mainUrl%
+Gui, Add, Edit, ys vMainUrl gSaveSettings w600, %mainUrl%
 MainUrl_TT=
 (
 if file link path is relative to a website
@@ -71,11 +78,12 @@ instead of www.url.com/folder/file.txt
 )
 
 Gui, Add, Text, center xs w100 section, Files URL:
-Gui, Add, Edit, ys vUrlWithFiles gSaveSettings w800, %UrlWithFiles%
+Gui, Add, Edit, ys vUrlWithFiles gSaveSettings w600, %UrlWithFiles%
 
 Gui, Add, Button, xs w100 section gPickFolder, Download Dir ...
-Gui, Add, Edit, ys vDownloadDir gSaveSettings w750, %downloadDir%
-Gui, Add, Button, ys w40 gOpenFolder, Open
+Gui, Add, Edit, ys vDownloadDir gSaveSettings w550, %downloadDir%
+
+Gui, Add, Button, ys w40 vOpenFolder gOpenFolder, Open
 
 Gui, Add, Button, xs section w100 gCheckAgain w100, PARSE
 Gui, Add, Button, xs  w100 gGuiSubmit, DOWNLOAD
@@ -88,7 +96,6 @@ else
 
 Gui, Add, CheckBox, xs vPrintFiles gSaveSettings %checkedState%, Print after DL
 
-
 Gui, Add, Button, xs w100 gSelectAll, Select All
 Gui, Add, Button, xs w100 gDeselectAll, Deselect All
 
@@ -96,26 +103,24 @@ Gui, Add, Button, xs w100 gClearLog, Clear Log
 
 Gui, Add, Button, xs w100 gGuiCancel w100, Quit
 
-
-
 Gui, Add, Text, center ys section w100 section, Filter:
-Gui, Add, Edit, ys vFilterText gFilterChanged w500, 
-Gui, Add, Button, ys w100 gClearFilter, Clear Filter
+Gui, Add, Edit, ys vFilterText gFilterChanged w300, 
+
+Gui, Add, Button, ys w100 vClearFilter gClearFilter, Clear Filter
 Gui, Add, CheckBox, ys+4 vRegexFilter gFilterChanged, Use Regex 
 
 Gui, Add, Text, center xs w100 section, Regex Find:
-Gui, Add, Edit, ys vRegexFind gUpdateListView w500, 
-Gui, Add, Button, ys w100 gClearRegexFind, Clear Find
+Gui, Add, Edit, ys vRegexFind gUpdateListView w300, 
+
+Gui, Add, Button, ys w100 vClearRegexFind gClearRegexFind, Clear Find
 
 Gui, Add, Text, center xs w100 section, Regex Replace:
-Gui, Add, Edit, ys vRegexReplace gUpdateListView w500, 
-Gui, Add, Button, ys w100 gClearRegexReplace, Clear Replace
+Gui, Add, Edit, ys vRegexReplace gUpdateListView w300, 
 
-Gui, Add, ListView, xs vFileListView r20 w800, File Name|URL
+Gui, Add, Button, ys w100 vClearRegexReplace gClearRegexReplace, Clear Replace
 
+Gui, Add, ListView, xs vFileListView r20 w600, File Name|URL
 
-
-; Populate ListView
 GOSUB, UpdateListView
 
 Gui, Add, StatusBar,, 
@@ -127,13 +132,22 @@ if (fileNames = "")
     SB_SetText(total2 . " new files found.")  
 }
 
+Gui, Font, s15
 Gui, Show,, File Selection
 
 Return
 
 CheckAgain:
+    SB_SetText("Checking ...")  
     allx := ""
-    httpQuery(allx, UrlWithFiles)  ; Download URL (UrlWithFiles) to a variable (allx)
+    ; httpQuery(allx, UrlWithFiles)  ; Download URL (UrlWithFiles) to a variable (allx)
+    httpQueryAsync(allx, UrlWithFiles)
+    if !allx
+    {
+        SB_SetText("Connection Timed Out ...") 
+        Return
+    }
+        
 
     res := ""
     total1 := 0
@@ -360,6 +374,7 @@ FilterChanged:
 return
 
 UpdateListView:
+    GuiControl, -Redraw, FileListView
     LV_Delete()
     GuiControlGet, regexFind, , RegexFind
     GuiControlGet, regexReplace, , RegexReplace
@@ -416,6 +431,7 @@ UpdateListView:
         else
             SB_SetText(total1 . " new files found.")
     }
+    GuiControl, +Redraw, FileListView
 return
 
 SelectAll:
@@ -488,6 +504,51 @@ httpQuery(byref Result, lpszUrl, POSTDATA="", HEADERS="")
     WebRequest := ""
 }
 
+httpQueryAsync(ByRef Result, lpszUrl, POSTDATA="", HEADERS="")
+{
+    WebRequest := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+    WebRequest.Open("GET", lpszUrl)
+    WebRequest.setRequestHeader("Content-Type", "application/x-www-form-urlencoded")
+
+    WebRequest.Send(POSTDATA)
+    
+    ; Run a timer to check for completion
+    SetTimer, CheckRequestStatus, 100
+    
+    CheckRequestStatus:
+    try
+    {
+        if (WebRequest.Status != "")
+        {
+            SetTimer, CheckRequestStatus, Off
+            Result := WebRequest.ResponseText
+            ; Continue processing
+        }
+    }
+    catch e
+    {
+        SetTimer, CheckRequestStatus, Off
+        MsgBox, 16, Network Error, Network connection appears to be down. Check your internet connection.
+        Result := ""
+    }
+}
+
+
+CheckNetworkStatus()
+{
+    RunWait, %comspec% /c ping www.google.com -n 1 -w 30000, , Hide ;-w N means how many seconds to wait
+    if ErrorLevel
+    {
+        MsgBox, 16, Network Error, Network connection appears to be down. Check your internet connection.
+        return false
+    }
+    return true
+}
+
+
+
+
+
 ; ----- function to pick folder
 PickFolder:
     FileSelectFolder, folderPath, *%A_ScriptDir% , 3, Select Download Folder
@@ -526,4 +587,21 @@ ClearLog:
         FileDelete, %logFile%  ; Delete the log file
         
     MsgBox, 64, Log Cleared, The log file has been cleared successfully.
+return
+
+GuiSize:
+    anchor("Extensions","w")
+    anchor("MainUrl","w")
+    anchor("UrlWithFiles","w")
+    anchor("downloadDir","w")
+    anchor("filterText","w")
+    anchor("regexFind","w")
+    anchor("regexReplace","w")
+    anchor("FileListView","w")
+
+    anchor("OpenFolder","x")
+    anchor("ClearFilter","x")
+    anchor("RegexFilter","x",true)
+    anchor("ClearRegexFind","x")
+    anchor("ClearRegexReplace","x")
 return
