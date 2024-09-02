@@ -24,7 +24,10 @@ if not FileExist(A_ScriptDir "\settings")
     FileCreateDir, %A_ScriptDir%\settings
     
 iniFile := A_ScriptDir "\settings\settings.ini"
-logFile := A_ScriptDir "\settings\log.txt"  ; Path to the log file
+logFile := A_ScriptDir "\settings\log.txt"
+csvFile := A_ScriptDir "\settings\regexPairs.csv"
+csvFileGroups := A_ScriptDir "\settings\urlGroups.csv"
+
 
 gosub LoadSettings
 
@@ -67,6 +70,7 @@ WM_MOUSEMOVE(){
 Gui, Add, Text, center w100, Extensions:
 Gui, Add, Edit, ys vExtensions gSaveSettings w600, %extensions%
 Extensions_TT := "comma-separated without dot"
+Gui, Add, Button, ys w100 vSaveUrlGroup gSaveUrlGroup, Save Pair
 
 Gui, Add, Text, center xs w100 section, Relative URL:
 Gui, Add, Edit, ys vMainUrl gSaveSettings w600, %mainUrl%
@@ -76,14 +80,15 @@ if file link path is relative to a website
 like /folder/file.txt 
 instead of www.url.com/folder/file.txt
 )
+Gui, Add, Button, ys w100 vLoadUrlGroups gLoadUrlGroups, Load Pair
 
 Gui, Add, Text, center xs w100 section, Files URL:
 Gui, Add, Edit, ys vUrlWithFiles gSaveSettings w600, %UrlWithFiles%
 
 Gui, Add, Button, xs w100 section gPickFolder, Download Dir ...
-Gui, Add, Edit, ys vDownloadDir gSaveSettings w550, %downloadDir%
+Gui, Add, Edit, ys vDownloadDir gSaveSettings w600, %downloadDir%
 
-Gui, Add, Button, ys w40 vOpenFolder gOpenFolder, Open
+Gui, Add, Button, ys w100 vOpenFolder gOpenFolder, Open
 
 Gui, Add, Button, xs section w100 gCheckAgain w100, PARSE
 Gui, Add, Button, xs  w100 gGuiSubmit, DOWNLOAD
@@ -104,20 +109,20 @@ Gui, Add, Button, xs w100 gClearLog, Clear Log
 Gui, Add, Button, xs w100 gGuiCancel w100, Quit
 
 Gui, Add, Text, center ys section w100 section, Filter:
-Gui, Add, Edit, ys vFilterText gFilterChanged w300, 
+Gui, Add, Edit, ys vFilterText gFilterChanged w380, 
 
 Gui, Add, Button, ys w100 vClearFilter gClearFilter, Clear Filter
 Gui, Add, CheckBox, ys+4 vRegexFilter gFilterChanged, Use Regex 
 
 Gui, Add, Text, center xs w100 section, Regex Find:
-Gui, Add, Edit, ys vRegexFind gUpdateListView w300, 
-
+Gui, Add, Edit, ys vRegexFind gUpdateListView w380, 
 Gui, Add, Button, ys w100 vClearRegexFind gClearRegexFind, Clear Find
+Gui, Add, Button, ys w100 vSaveRegexPair gSaveRegexPair, Save Pair
 
 Gui, Add, Text, center xs w100 section, Regex Replace:
-Gui, Add, Edit, ys vRegexReplace gUpdateListView w300, 
-
+Gui, Add, Edit, ys vRegexReplace gUpdateListView w380, 
 Gui, Add, Button, ys w100 vClearRegexReplace gClearRegexReplace, Clear Replace
+Gui, Add, Button, ys w100 vLoadRegexPairs gLoadRegexPairs, Load Pairs
 
 Gui, Add, ListView, xs vFileListView r20 w600, File Name|URL
 
@@ -136,6 +141,265 @@ Gui, Font, s15
 Gui, Show,, File Selection
 
 Return
+
+
+;------------------
+SaveUrlGroup:
+    Gui, Submit, NoHide
+    InputBox, Desc, Save Group, Enter a description for this group:, , , 
+    if (ErrorLevel)
+        return 
+    FileAppend, %extensions%`,%mainUrl%`,%urlWithFiles% `,%Desc%`n, %csvFileGroups%
+    return
+
+LoadUrlGroups:
+    ; Open the new GUI for the URL Group Picker
+    GuiUrlGroupPicker()
+    return
+
+GuiUrlGroupPicker() {
+    global
+    ; Create a new GUI for the URL Group Picker
+    Gui, New, +Resize +hwndHGroupPicker
+    Gui, Add, Text, center w380, Double-click a group to load:
+    Gui, Add, ListView, xs vUrlGroupsListView r15 w600 gPickGroup, Extensions|Main URL|Files URL|Description
+
+    ; Load saved groups into the ListView
+    if FileExist(csvFileGroups)
+    {
+        FileRead, urlGroupsContent, %csvFileGroups%
+        Loop, Parse, urlGroupsContent, `n, `r
+        {
+            if (A_LoopField = "")
+                continue ; Skip empty lines
+
+            StringSplit, group, A_LoopField, `,
+            LV_Add("", group1, group2, group3, group4) ; Add extensions, main URL, files URL, and description to ListView
+        }
+    }
+    else
+    {
+        MsgBox, 16, Error, No URL groups file found.
+        return
+    }
+
+    Gui, Add, Button, xs gGroupPickerOK w100, OK
+    Gui, Add, Button, xs gGroupPickerCancel w100, Cancel
+    Gui, Add, Button, xs gDeleteGroup w100, Delete ; Add Delete button
+
+    Gui, Show,, URL Group Picker
+}
+
+GroupPickerOK:
+    GuiControl, +ReadOnly, Extensions
+    GuiControl, +ReadOnly, MainUrl
+    GuiControl, +ReadOnly, UrlWithFiles
+
+    ; Get selected row data
+    LV_GetText(SelectedExtensions, LV_GetNext(0), 1)
+    LV_GetText(SelectedMainUrl, LV_GetNext(0), 2)
+    LV_GetText(SelectedUrlWithFiles, LV_GetNext(0), 3)
+    ; Update main GUI fields
+    GuiControl,%HGui%:, Extensions, %SelectedExtensions%
+    GuiControl,%HGui%:, MainUrl, %SelectedMainUrl%
+    GuiControl,%HGui%:, UrlWithFiles, %SelectedUrlWithFiles%
+
+    ; Close the Group Picker GUI
+    Gui, %HGroupPicker%:Destroy
+return
+
+GroupPickerCancel:
+    ; Close the Group Picker GUI without changes
+    Gui, %HGroupPicker%:Destroy
+return
+
+PickGroup:
+    if (A_GuiEvent = "DoubleClick")
+    {
+        ; Double-click event to select the group
+        gosub, GroupPickerOK
+    }
+return
+
+DeleteGroup:
+    ; Get the currently selected row
+    SelectedRow := LV_GetNext(0)
+    if (SelectedRow = 0)
+    {
+        MsgBox, 48, No Selection, Please select a group to delete.
+        return
+    }
+
+    ; Confirm deletion
+    MsgBox, 4, Confirm Deletion, Are you sure you want to delete the selected URL group?
+    IfMsgBox, No
+        return
+
+    ; Get selected row data
+    LV_GetText(SelectedExtensions, SelectedRow, 1)
+    LV_GetText(SelectedMainUrl, SelectedRow, 2)
+    LV_GetText(SelectedUrlWithFiles, SelectedRow, 3)
+
+    ; Remove the selected group from the ListView
+    LV_Delete(SelectedRow)
+
+    ; Read existing groups and write back without the deleted group
+    if FileExist(csvFileGroups)
+    {
+        FileRead, urlGroupsContent, %csvFileGroups%
+        newContent := ""
+        Loop, Parse, urlGroupsContent, `n, `r
+        {
+            if (A_LoopField = "")
+                continue ; Skip empty lines
+
+            StringSplit, group, A_LoopField, `,
+            if (group1 = SelectedExtensions && group2 = SelectedMainUrl && group3 = SelectedUrlWithFiles)
+                continue ; Skip the group to be deleted
+
+            newContent .= A_LoopField "`n" ; Keep all other groups
+        }
+
+        ; Write the updated content back to the file
+        FileDelete, %csvFileGroups%
+        FileAppend, %newContent%, %csvFileGroups%
+    }
+    else
+    {
+        MsgBox, 16, Error, No URL groups file found.
+        return
+    }
+
+    MsgBox, 64, Deletion Successful, The selected URL group has been deleted.
+return
+
+;------------------
+
+SaveRegexPair:
+    Gui, Submit, NoHide
+    InputBox, Desc, Save Pair, Enter a description for this find/replace pair:, , , 
+    if (ErrorLevel)
+        return 
+    FileAppend, %RegexFind%`,%RegexReplace% `,%Desc%`n, %csvFile%
+
+    return
+
+LoadRegexPairs:
+    ; Open the new GUI for the Regex Picker
+    GuiRegexPicker()
+    return
+
+GuiRegexPicker() {
+    global
+    ; Create a new GUI for the Regex Picker
+    Gui, New, +Resize +hwndHPicker
+    Gui, Add, Text, center w380, Double-click a pair to load:
+    Gui, Add, ListView, xs vRegexPairsListView r15 w400 gPickPair, Find|Replace|Description
+
+    ; Load saved pairs into the ListView
+    if FileExist(csvFile)
+    {
+        FileRead, regexPairsContent, %csvFile%
+        Loop, Parse, regexPairsContent, `n, `r
+        {
+            if (A_LoopField = "")
+                continue ; Skip empty lines
+
+            StringSplit, pair, A_LoopField, `,
+            LV_Add("", pair1, pair2, pair3) ; Add find, replace, and description to ListView
+        }
+    }
+    else
+    {
+        MsgBox, 16, Error, No regex pairs file found.
+        return
+    }
+
+    Gui, Add, Button, xs gPickerOK w100, OK
+    Gui, Add, Button, xs gPickerCancel w100, Cancel
+    Gui, Add, Button, xs gDeletePair w100, Delete ; Add Delete button
+
+    Gui, Show,, Regex Picker
+}
+
+PickerOK:
+    GuiControl, +ReadOnly, RegexFind
+    GuiControl, +ReadOnly, RegexReplace
+
+    ; Get selected row data
+    LV_GetText(SelectedFind, LV_GetNext(0), 1)
+    LV_GetText(SelectedReplace, LV_GetNext(0), 2)
+    ; Update main GUI fields
+    GuiControl,%HGui%:, RegexFind, %SelectedFind%
+    GuiControl,%HGui%:, RegexReplace, %SelectedReplace%
+
+    ; Close the Picker GUI
+    Gui, %HPicker%:Destroy
+return
+
+PickerCancel:
+    ; Close the Picker GUI without changes
+    Gui, %HPicker%:Destroy
+return
+
+PickPair:
+    if (A_GuiEvent = "DoubleClick")
+    {
+        ; Double-click event to select the pair
+        gosub, PickerOK
+    }
+return
+
+DeletePair:
+    ; Get the currently selected row
+    SelectedRow := LV_GetNext(0)
+    if (SelectedRow = 0)
+    {
+        MsgBox, 48, No Selection, Please select a pair to delete.
+        return
+    }
+
+    ; Confirm deletion
+    MsgBox, 4, Confirm Deletion, Are you sure you want to delete the selected regex pair?
+    IfMsgBox, No
+        return
+
+    ; Get selected row data
+    LV_GetText(SelectedFind, SelectedRow, 1)
+    LV_GetText(SelectedReplace, SelectedRow, 2)
+
+    ; Remove the selected pair from the ListView
+    LV_Delete(SelectedRow)
+
+    ; Read existing pairs and write back without the deleted pair
+    if FileExist(csvFile)
+    {
+        FileRead, regexPairsContent, %csvFile%
+        newContent := ""
+        Loop, Parse, regexPairsContent, `n, `r
+        {
+            if (A_LoopField = "")
+                continue ; Skip empty lines
+
+            StringSplit, pair, A_LoopField, `,
+            if (pair1 = SelectedFind && pair2 = SelectedReplace)
+                continue ; Skip the pair to be deleted
+
+            newContent .= A_LoopField "`n" ; Keep all other pairs
+        }
+
+        ; Write the updated content back to the file
+        FileDelete, %csvFile%
+        FileAppend, %newContent%, %csvFile%
+    }
+    else
+    {
+        MsgBox, 16, Error, No regex pairs file found.
+        return
+    }
+
+    MsgBox, 64, Deletion Successful, The selected regex pair has been deleted.
+return
 
 CheckAgain:
     SB_SetText("Checking ...")  
@@ -196,27 +460,16 @@ CheckAgain:
         }
     }
 
-    ; Update ListView
     GOSUB, UpdateListView
 
-    ; Show status in the status bar
-    if (total1 = 0)
-    {
-        SB_SetText("No new files found.")
-    }
-    else
-    {
-        SB_SetText(total1 . " new files found.")
-    }
+    SB_SetText(total1 ? total1 . " new files found." : "No new files found.")
 
     Gui, Show
 
 return
 
-; Function to check if a file is already logged in the log file
 IsFileLogged(fileName) {
     global
-    ; Ensure log file exists before reading
     if not FileExist(logFile)
         return false
 
@@ -239,23 +492,23 @@ LogDownload(fileName, dateTime) {
         
     FileAppend, %fileName%`, %dateTime%`n, %logFile%
     ; FileAppend, %existingContent%`n%fileName%`, %dateTime%`n, %logFile%
-
 }
 
 ClearFilter:
-    GuiControl,, filterText,  ; Clear the Regex Find field
+    GuiControl,, filterText,  
 return
 
 ClearRegexFind:
-    GuiControl,, RegexFind,  ; Clear the Regex Find field
+    GuiControl,, RegexFind,  
 return
 
 ClearRegexReplace:
-    GuiControl,, RegexReplace,  ; Clear the Regex Replace field
+    GuiControl,, RegexReplace,  
 return
 
 GuiCancel:
     ExitApp
+Return
 
 GuiSubmit:
     Gui, Submit, NoHide
@@ -365,7 +618,7 @@ SelectFolder:
     FileSelectFolder, downloadDir
     if (downloadDir != "")
         GuiControl,, DownloadDir, %downloadDir%
-    return
+return
 
 FilterChanged:
     GuiControlGet, filterText, , FilterText
@@ -383,54 +636,43 @@ UpdateListView:
     filteredCount := 0
     Loop, Parse, res, `n, `r
     {
-        if (A_LoopField != "")
+        if (A_LoopField = "")
+            continue
+    
+        StringSplit, T, A_LoopField, |
+        newFileName := T2
+    
+        ; Apply regex replacement if a find pattern is provided
+        if (regexFind != "")
+            newFileName := RegExReplace(newFileName, regexFind, regexReplace)
+    
+        ; Check filter condition
+        if (regexFilter ? (RegExMatch(newFileName, filterText) || RegExMatch(T1, filterText))
+                        : (InStr(newFileName, filterText) || InStr(T1, filterText)))
         {
-            StringSplit, T, A_LoopField, |
-            newFileName := T2
-            ; Apply regex replacement if a find pattern is provided
-            if (regexFind != "")
-            {
-                newFileName := RegExReplace(newFileName, regexFind, regexReplace)
-            }
-            ; Apply filter if needed
-            if (regexFilter)
-            {
-                ; Use regex for filtering
-                if (RegExMatch(newFileName, filterText) || RegExMatch(T1, filterText))
-                {
-                    LV_Add("", newFileName, T1)
-                    filteredCount++
-                }
-            }
-            else
-            {
-                ; Use simple string matching for filtering
-                if (InStr(newFileName, filterText) || InStr(T1, filterText))
-                {
-                    LV_Add("", newFileName, T1)
-                    filteredCount++
-                }
-            }
+            LV_Add("", newFileName, T1)
+            filteredCount++
         }
     }
+        
     LV_ModifyCol(1, "AutoHdr")
     LV_ModifyCol(2, "AutoHdr")
 
     ; Update status bar
     if (filteredCount = 0)
-    {
-        if (filterText != "")
-            SB_SetText("No files match the filter.")
+        {
+            if (filterText != "")
+                SB_SetText("No files match the filter.")
+            else
+                SB_SetText("No new files found.")
+        }
         else
-            SB_SetText("No new files found.")
-    }
-    else
-    {
-        if (filterText != "")
-            SB_SetText(filteredCount . " files match the filter out of " . total1 . " new files found.")
-        else
-            SB_SetText(total1 . " new files found.")
-    }
+        {
+            if (filterText != "")
+                SB_SetText(filteredCount . " files match the filter out of " . total1 . " new files found.")
+            else
+                SB_SetText(total1 . " new files found.")
+        }
     GuiControl, +Redraw, FileListView
 return
 
@@ -466,32 +708,15 @@ SaveSettings:
 return
 
 LoadSettings:
-    ; If the settings.ini file does not exist, create it with default values
-    if !FileExist(iniFile)
-    {
-        ; Create the settings.ini file with default settings
-        IniWrite, pdf, %iniFile%, Settings, Extensions
-        IniWrite, https://rodospublictransport.gr/, %iniFile%, Settings, MainUrl
-        IniWrite, https://rodospublictransport.gr/index.php?c=schedule&p=pdf, %iniFile%, Settings, UrlWithFiles
-        IniWrite, %A_ScriptDir%, %iniFile%, Settings, DownloadDir
-        IniWrite, 1, %iniFile%, Settings, PrintFiles
-
-    }
-
-    ; Read settings from settings.ini
-    IniRead, extensions, %iniFile%, Settings, Extensions, pdf
-    IniRead, mainUrl, %iniFile%, Settings, MainUrl, https://rodospublictransport.gr/
-    IniRead, UrlWithFiles, %iniFile%, Settings, UrlWithFiles, https://rodospublictransport.gr/index.php?c=schedule&p=pdf
+    IniRead, extensions, %iniFile%, Settings, Extensions
+    IniRead, mainUrl, %iniFile%, Settings, MainUrl
+    IniRead, UrlWithFiles, %iniFile%, Settings, UrlWithFiles
     IniRead, downloadDir, %iniFile%, Settings, DownloadDir, %A_ScriptDir%
     IniRead, printFiles, %iniFile%, Settings, PrintFiles, 1
     
-    ; Convert read value to integer
     printFiles := printFiles ? 1 : 0
 return
 
-;-----------------------------------------------------------------------------------------------------------------
-esc::exitapp  ;- ESCAPE break download / close this script
-;-----------------------------------------------------------------------------------------------------------------
 
 ;---------------- function urldownloadtovariable ------------------------------------------------------------------
 httpQuery(byref Result, lpszUrl, POSTDATA="", HEADERS="")
@@ -512,7 +737,6 @@ httpQueryAsync(ByRef Result, lpszUrl, POSTDATA="", HEADERS="")
 
     WebRequest.Send(POSTDATA)
     
-    ; Run a timer to check for completion
     SetTimer, CheckRequestStatus, 100
     
     CheckRequestStatus:
@@ -533,7 +757,6 @@ httpQueryAsync(ByRef Result, lpszUrl, POSTDATA="", HEADERS="")
     }
 }
 
-
 CheckNetworkStatus()
 {
     RunWait, %comspec% /c ping www.google.com -n 1 -w 30000, , Hide ;-w N means how many seconds to wait
@@ -545,11 +768,6 @@ CheckNetworkStatus()
     return true
 }
 
-
-
-
-
-; ----- function to pick folder
 PickFolder:
     FileSelectFolder, folderPath, *%A_ScriptDir% , 3, Select Download Folder
     if folderPath
@@ -558,8 +776,6 @@ PickFolder:
         IniWrite, %folderPath%, %iniFile%, Settings, DownloadDir ; Save the new folder path
     }
 return
-
-;---------------- function openoractivatewindow -------------------------------------------------------------------
 
 OpenFolder:
     GuiControlGet, DownloadDir, , DownloadDir
@@ -583,10 +799,8 @@ AHK_NOTIFYICON(hGui, wp, lp) {
 }
 
 ClearLog:
-    if FileExist(logFile)  ; Check if the log file exists
-        FileDelete, %logFile%  ; Delete the log file
-        
-    MsgBox, 64, Log Cleared, The log file has been cleared successfully.
+    FileDelete, %logFile%
+    SB_SetText("Log cleared.")
 return
 
 GuiSize:
@@ -604,4 +818,10 @@ GuiSize:
     anchor("RegexFilter","x",true)
     anchor("ClearRegexFind","x")
     anchor("ClearRegexReplace","x")
+    anchor("SaveUrlGroup","x")
+    anchor("LoadUrlGroups","x")
+    anchor("SaveRegexPair","x")
+    anchor("LoadRegexPairs","x")
 return
+
+esc::exitapp  
