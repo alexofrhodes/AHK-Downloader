@@ -5,7 +5,7 @@ anastasioualex@gmail.com
 Description:
             List new files from a website           (filtering out those already downloaded)
             Rename by regex before downloading      (the check for wether they were downloaded is by logging their original name to log.txt)
-            Filter the new list by text or regex    (
+            Filter the new list by text or regex    
             Support links like www.url.com/file.txt and relative links like "/folder/file.txt"  
             Download selected files
             Optionally print                        (//TODO improve print function to allow for more filetypes, currently for pdf only)
@@ -138,269 +138,12 @@ if (fileNames = "")
     SB_SetText(total2 . " new files found.")  
 }
 
-Gui, Font, s15
+Gui, Font, s15 
 Gui, Show,, File Selection
 
 Return
 
 
-;------------------
-SaveUrlGroup:
-    Gui, Submit, NoHide
-    InputBox, Desc, Save Group, Enter a description for this group:, , , 
-    if (ErrorLevel)
-        return 
-    FileAppend, %extensions%`,%mainUrl%`,%urlWithFiles% `,%Desc%`n, %csvFileGroups%
-    return
-
-LoadUrlGroups:
-    ; Open the new GUI for the URL Group Picker
-    GuiUrlGroupPicker()
-    return
-
-GuiUrlGroupPicker() {
-    global
-    ; Create a new GUI for the URL Group Picker
-    Gui, New, +Resize +hwndHGroupPicker
-    Gui, Add, Text, center w380, Double-click a group to load:
-    Gui, Add, ListView, xs vUrlGroupsListView r15 w600 gPickGroup, Extensions|Main URL|Files URL|Description
-
-    ; Load saved groups into the ListView
-    if FileExist(csvFileGroups)
-    {
-        FileRead, urlGroupsContent, %csvFileGroups%
-        Loop, Parse, urlGroupsContent, `n, `r
-        {
-            if (A_LoopField = "")
-                continue ; Skip empty lines
-
-            StringSplit, group, A_LoopField, `,
-            LV_Add("", group1, group2, group3, group4) ; Add extensions, main URL, files URL, and description to ListView
-        }
-    }
-    else
-    {
-        MsgBox, 16, Error, No URL groups file found.
-        return
-    }
-
-    Gui, Add, Button, xs gGroupPickerOK w100, OK
-    Gui, Add, Button, xs gGroupPickerCancel w100, Cancel
-    Gui, Add, Button, xs gDeleteGroup w100, Delete ; Add Delete button
-
-    Gui, Show,, URL Group Picker
-}
-
-GroupPickerOK:
-    GuiControl, +ReadOnly, Extensions
-    GuiControl, +ReadOnly, MainUrl
-    GuiControl, +ReadOnly, UrlWithFiles
-
-    ; Get selected row data
-    LV_GetText(SelectedExtensions, LV_GetNext(0), 1)
-    LV_GetText(SelectedMainUrl, LV_GetNext(0), 2)
-    LV_GetText(SelectedUrlWithFiles, LV_GetNext(0), 3)
-    ; Update main GUI fields
-    GuiControl,%HGui%:, Extensions, %SelectedExtensions%
-    GuiControl,%HGui%:, MainUrl, %SelectedMainUrl%
-    GuiControl,%HGui%:, UrlWithFiles, %SelectedUrlWithFiles%
-
-    ; Close the Group Picker GUI
-    Gui, %HGroupPicker%:Destroy
-return
-
-GroupPickerCancel:
-    ; Close the Group Picker GUI without changes
-    Gui, %HGroupPicker%:Destroy
-return
-
-PickGroup:
-    if (A_GuiEvent = "DoubleClick")
-    {
-        ; Double-click event to select the group
-        gosub, GroupPickerOK
-    }
-return
-
-DeleteGroup:
-    ; Get the currently selected row
-    SelectedRow := LV_GetNext(0)
-    if (SelectedRow = 0)
-    {
-        MsgBox, 48, No Selection, Please select a group to delete.
-        return
-    }
-
-    ; Confirm deletion
-    MsgBox, 4, Confirm Deletion, Are you sure you want to delete the selected URL group?
-    IfMsgBox, No
-        return
-
-    ; Get selected row data
-    LV_GetText(SelectedExtensions, SelectedRow, 1)
-    LV_GetText(SelectedMainUrl, SelectedRow, 2)
-    LV_GetText(SelectedUrlWithFiles, SelectedRow, 3)
-
-    ; Remove the selected group from the ListView
-    LV_Delete(SelectedRow)
-
-    ; Read existing groups and write back without the deleted group
-    if FileExist(csvFileGroups)
-    {
-        FileRead, urlGroupsContent, %csvFileGroups%
-        newContent := ""
-        Loop, Parse, urlGroupsContent, `n, `r
-        {
-            if (A_LoopField = "")
-                continue ; Skip empty lines
-
-            StringSplit, group, A_LoopField, `,
-            if (group1 = SelectedExtensions && group2 = SelectedMainUrl && group3 = SelectedUrlWithFiles)
-                continue ; Skip the group to be deleted
-
-            newContent .= A_LoopField "`n" ; Keep all other groups
-        }
-
-        ; Write the updated content back to the file
-        FileDelete, %csvFileGroups%
-        FileAppend, %newContent%, %csvFileGroups%
-    }
-    else
-    {
-        MsgBox, 16, Error, No URL groups file found.
-        return
-    }
-
-    MsgBox, 64, Deletion Successful, The selected URL group has been deleted.
-return
-
-;------------------
-
-SaveRegexPair:
-    Gui, Submit, NoHide
-    InputBox, Desc, Save Pair, Enter a description for this find/replace pair:, , , 
-    if (ErrorLevel)
-        return 
-    FileAppend, %RegexFind%`,%RegexReplace% `,%Desc%`n, %csvFile%
-
-    return
-
-LoadRegexPairs:
-    ; Open the new GUI for the Regex Picker
-    GuiRegexPicker()
-    return
-
-GuiRegexPicker() {
-    global
-    ; Create a new GUI for the Regex Picker
-    Gui, New, +Resize +hwndHPicker
-    Gui, Add, Text, center w380, Double-click a pair to load:
-    Gui, Add, ListView, xs vRegexPairsListView r15 w400 gPickPair, Find|Replace|Description
-
-    ; Load saved pairs into the ListView
-    if FileExist(csvFile)
-    {
-        FileRead, regexPairsContent, %csvFile%
-        Loop, Parse, regexPairsContent, `n, `r
-        {
-            if (A_LoopField = "")
-                continue ; Skip empty lines
-
-            StringSplit, pair, A_LoopField, `,
-            LV_Add("", pair1, pair2, pair3) ; Add find, replace, and description to ListView
-        }
-    }
-    else
-    {
-        MsgBox, 16, Error, No regex pairs file found.
-        return
-    }
-
-    Gui, Add, Button, xs gPickerOK w100, OK
-    Gui, Add, Button, xs gPickerCancel w100, Cancel
-    Gui, Add, Button, xs gDeletePair w100, Delete ; Add Delete button
-
-    Gui, Show,, Regex Picker
-}
-
-PickerOK:
-    GuiControl, +ReadOnly, RegexFind
-    GuiControl, +ReadOnly, RegexReplace
-
-    ; Get selected row data
-    LV_GetText(SelectedFind, LV_GetNext(0), 1)
-    LV_GetText(SelectedReplace, LV_GetNext(0), 2)
-    ; Update main GUI fields
-    GuiControl,%HGui%:, RegexFind, %SelectedFind%
-    GuiControl,%HGui%:, RegexReplace, %SelectedReplace%
-
-    ; Close the Picker GUI
-    Gui, %HPicker%:Destroy
-return
-
-PickerCancel:
-    ; Close the Picker GUI without changes
-    Gui, %HPicker%:Destroy
-return
-
-PickPair:
-    if (A_GuiEvent = "DoubleClick")
-    {
-        ; Double-click event to select the pair
-        gosub, PickerOK
-    }
-return
-
-DeletePair:
-    ; Get the currently selected row
-    SelectedRow := LV_GetNext(0)
-    if (SelectedRow = 0)
-    {
-        MsgBox, 48, No Selection, Please select a pair to delete.
-        return
-    }
-
-    ; Confirm deletion
-    MsgBox, 4, Confirm Deletion, Are you sure you want to delete the selected regex pair?
-    IfMsgBox, No
-        return
-
-    ; Get selected row data
-    LV_GetText(SelectedFind, SelectedRow, 1)
-    LV_GetText(SelectedReplace, SelectedRow, 2)
-
-    ; Remove the selected pair from the ListView
-    LV_Delete(SelectedRow)
-
-    ; Read existing pairs and write back without the deleted pair
-    if FileExist(csvFile)
-    {
-        FileRead, regexPairsContent, %csvFile%
-        newContent := ""
-        Loop, Parse, regexPairsContent, `n, `r
-        {
-            if (A_LoopField = "")
-                continue ; Skip empty lines
-
-            StringSplit, pair, A_LoopField, `,
-            if (pair1 = SelectedFind && pair2 = SelectedReplace)
-                continue ; Skip the pair to be deleted
-
-            newContent .= A_LoopField "`n" ; Keep all other pairs
-        }
-
-        ; Write the updated content back to the file
-        FileDelete, %csvFile%
-        FileAppend, %newContent%, %csvFile%
-    }
-    else
-    {
-        MsgBox, 16, Error, No regex pairs file found.
-        return
-    }
-
-    MsgBox, 64, Deletion Successful, The selected regex pair has been deleted.
-return
 
 CheckAgain:
     SB_SetText("Checking ...")  
@@ -449,13 +192,8 @@ CheckAgain:
         ; Reconstruct the filename from the folder path and file name
         newFileName := fileName
 
-        ; Check if a file with a similar name exists
-        fileExists := false
-
         ; Check if the file is already logged
-        if (IsFileLogged(newFileName)){
-            fileExists := true
-        }else{
+        if not (IsFileLogged(newUrl)){
                 total1++
                 res .= newUrl "|" newFileName "`r`n"  ; Add each found URL and new file name to variable RES
         }
@@ -469,47 +207,34 @@ CheckAgain:
 
 return
 
-IsFileLogged(fileName) {
+IsFileLogged(fileURL) {
     global
     if not FileExist(logFile)
         return false
 
     FileRead, logContent, %logFile%
-    if RegExMatch(logContent, "^" fileName "`s*,", _)
+
+    ; Check if the URL is found in the log
+    if InStr(logContent, fileURL)
         return true
 
     return false
 }
 
-LogDownload(fileName, dateTime) {
-    global
-    ; Ensure the settings directory exists
-    if not FileExist(A_ScriptDir "\settings")
-        FileCreateDir, %A_ScriptDir%\settings
 
-    ; existingContent := ""
-    ; if (FileExist(logFile))
-    ;     FileRead, existingContent, %logFile%
-        
-    FileAppend, %fileName%`, %dateTime%`n, %logFile%
-    ; FileAppend, %existingContent%`n%fileName%`, %dateTime%`n, %logFile%
+
+
+LogDownload(fileUrl) {
+    global
+    FileRead, previousText, %logFile%
+    if not (previousText = "")
+        newText .= previousText "`n"
+    newText .=  fileUrl
+    FileDelete, %logFile%
+    FileAppend, %newText%, %logFile%
 }
 
-ClearFilter:
-    GuiControl,, filterText,  
-return
 
-ClearRegexFind:
-    GuiControl,, RegexFind,  
-return
-
-ClearRegexReplace:
-    GuiControl,, RegexReplace,  
-return
-
-GuiCancel:
-    ExitApp
-Return
 
 GuiSubmit:
     Gui, Submit, NoHide
@@ -566,9 +291,7 @@ GuiSubmit:
             FilePath := downloadDir "\" newFileName
             UrlDownloadToFile, %url%, %FilePath%
 
-            ; Log the download to the log file
-            SplitPath, url, fileNameFromUrl
-            LogDownload(fileNameFromUrl, TimeString)
+            LogDownload(url)
 
             if (printFiles)
             {
@@ -612,19 +335,6 @@ GuiSubmit:
   
     Gosub CheckAgain
 
-return
-
-
-SelectFolder:
-    FileSelectFolder, downloadDir
-    if (downloadDir != "")
-        GuiControl,, DownloadDir, %downloadDir%
-return
-
-FilterChanged:
-    GuiControlGet, filterText, , FilterText
-    GuiControlGet, regexFilter, , RegexFilter
-    GOSUB, UpdateListView
 return
 
 UpdateListView:
@@ -825,7 +535,296 @@ GuiSize:
     anchor("LoadRegexPairs","x")
 return
 
+
+SaveRegexPair:
+    Gui, Submit, NoHide
+    InputBox, Desc, Save Pair, Enter a description for this find/replace pair:, , , 
+    if (ErrorLevel)
+        return 
+    FileAppend, %RegexFind%`,%RegexReplace% `,%Desc%`n, %csvFile%
+
+    return
+
+LoadRegexPairs:
+    ; Open the new GUI for the Regex Picker
+    GuiRegexPicker()
+    return
+
+GuiRegexPicker() {
+    global
+    ; Create a new GUI for the Regex Picker
+    Gui, New, +Resize +hwndHPicker
+    Gui, Add, Text, center w380, Double-click a pair to load:
+    Gui, Add, ListView, xs vRegexPairsListView r15 w400 gPickPair, Find|Replace|Description
+
+    ; Load saved pairs into the ListView
+    if FileExist(csvFile)
+    {
+        FileRead, regexPairsContent, %csvFile%
+        Loop, Parse, regexPairsContent, `n, `r
+        {
+            if (A_LoopField = "")
+                continue ; Skip empty lines
+
+            StringSplit, pair, A_LoopField, `,
+            LV_Add("", pair1, pair2, pair3) ; Add find, replace, and description to ListView
+        }
+    }
+    else
+    {
+        MsgBox, 16, Error, No regex pairs file found.
+        return
+    }
+
+    Gui, Add, Button, xs gPickerOK w100, OK
+    Gui, Add, Button, xs gPickerCancel w100, Cancel
+    Gui, Add, Button, xs gDeletePair w100, Delete ; Add Delete button
+
+    Gui, Show,, Regex Picker
+}
+
+PickerOK:
+    GuiControl, +ReadOnly, RegexFind
+    GuiControl, +ReadOnly, RegexReplace
+
+    ; Get selected row data
+    LV_GetText(SelectedFind, LV_GetNext(0), 1)
+    LV_GetText(SelectedReplace, LV_GetNext(0), 2)
+    ; Update main GUI fields
+    GuiControl,%HGui%:, RegexFind, %SelectedFind%
+    GuiControl,%HGui%:, RegexReplace, %SelectedReplace%
+
+    ; Close the Picker GUI
+    Gui, %HPicker%:Destroy
+return
+
+PickerCancel:
+    ; Close the Picker GUI without changes
+    Gui, %HPicker%:Destroy
+return
+
+PickPair:
+    if (A_GuiEvent = "DoubleClick")
+    {
+        ; Double-click event to select the pair
+        gosub, PickerOK
+    }
+return
+
+DeletePair:
+    ; Get the currently selected row
+    SelectedRow := LV_GetNext(0)
+    if (SelectedRow = 0)
+    {
+        MsgBox, 48, No Selection, Please select a pair to delete.
+        return
+    }
+
+    ; Confirm deletion
+    MsgBox, 4, Confirm Deletion, Are you sure you want to delete the selected regex pair?
+    IfMsgBox, No
+        return
+
+    ; Get selected row data
+    LV_GetText(SelectedFind, SelectedRow, 1)
+    LV_GetText(SelectedReplace, SelectedRow, 2)
+
+    ; Remove the selected pair from the ListView
+    LV_Delete(SelectedRow)
+
+    ; Read existing pairs and write back without the deleted pair
+    if FileExist(csvFile)
+    {
+        FileRead, regexPairsContent, %csvFile%
+        newContent := ""
+        Loop, Parse, regexPairsContent, `n, `r
+        {
+            if (A_LoopField = "")
+                continue ; Skip empty lines
+
+            StringSplit, pair, A_LoopField, `,
+            if (pair1 = SelectedFind && pair2 = SelectedReplace)
+                continue ; Skip the pair to be deleted
+
+            newContent .= A_LoopField "`n" ; Keep all other pairs
+        }
+
+        ; Write the updated content back to the file
+        FileDelete, %csvFile%
+        FileAppend, %newContent%, %csvFile%
+    }
+    else
+    {
+        MsgBox, 16, Error, No regex pairs file found.
+        return
+    }
+
+    MsgBox, 64, Deletion Successful, The selected regex pair has been deleted.
+return
+
+
+;------------------
+SaveUrlGroup:
+    Gui, Submit, NoHide
+    InputBox, Desc, Save Group, Enter a description for this group:, , , 
+    if (ErrorLevel)
+        return 
+    FileAppend, %extensions%`,%mainUrl%`,%urlWithFiles% `,%Desc%`n, %csvFileGroups%
+    return
+
+LoadUrlGroups:
+    ; Open the new GUI for the URL Group Picker
+    GuiUrlGroupPicker()
+    return
+
+GuiUrlGroupPicker() {
+    global
+    ; Create a new GUI for the URL Group Picker
+    Gui, New, +Resize +hwndHGroupPicker
+    Gui, Add, Text, center w380, Double-click a group to load:
+    Gui, Add, ListView, xs vUrlGroupsListView r15 w600 gPickGroup, Extensions|Main URL|Files URL|Description
+
+    ; Load saved groups into the ListView
+    if FileExist(csvFileGroups)
+    {
+        FileRead, urlGroupsContent, %csvFileGroups%
+        Loop, Parse, urlGroupsContent, `n, `r
+        {
+            if (A_LoopField = "")
+                continue ; Skip empty lines
+
+            StringSplit, group, A_LoopField, `,
+            LV_Add("", group1, group2, group3, group4) ; Add extensions, main URL, files URL, and description to ListView
+        }
+    }
+    else
+    {
+        MsgBox, 16, Error, No URL groups file found.
+        return
+    }
+
+    Gui, Add, Button, xs gGroupPickerOK w100, OK
+    Gui, Add, Button, xs gGroupPickerCancel w100, Cancel
+    Gui, Add, Button, xs gDeleteGroup w100, Delete ; Add Delete button
+
+    Gui, Show,, URL Group Picker
+}
+
+GroupPickerOK:
+    GuiControl, +ReadOnly, Extensions
+    GuiControl, +ReadOnly, MainUrl
+    GuiControl, +ReadOnly, UrlWithFiles
+
+    ; Get selected row data
+    LV_GetText(SelectedExtensions, LV_GetNext(0), 1)
+    LV_GetText(SelectedMainUrl, LV_GetNext(0), 2)
+    LV_GetText(SelectedUrlWithFiles, LV_GetNext(0), 3)
+    ; Update main GUI fields
+    GuiControl,%HGui%:, Extensions, %SelectedExtensions%
+    GuiControl,%HGui%:, MainUrl, %SelectedMainUrl%
+    GuiControl,%HGui%:, UrlWithFiles, %SelectedUrlWithFiles%
+
+    ; Close the Group Picker GUI
+    Gui, %HGroupPicker%:Destroy
+return
+
+GroupPickerCancel:
+    ; Close the Group Picker GUI without changes
+    Gui, %HGroupPicker%:Destroy
+return
+
+PickGroup:
+    if (A_GuiEvent = "DoubleClick")
+    {
+        ; Double-click event to select the group
+        gosub, GroupPickerOK
+    }
+return
+
+DeleteGroup:
+    ; Get the currently selected row
+    SelectedRow := LV_GetNext(0)
+    if (SelectedRow = 0)
+    {
+        MsgBox, 48, No Selection, Please select a group to delete.
+        return
+    }
+
+    ; Confirm deletion
+    MsgBox, 4, Confirm Deletion, Are you sure you want to delete the selected URL group?
+    IfMsgBox, No
+        return
+
+    ; Get selected row data
+    LV_GetText(SelectedExtensions, SelectedRow, 1)
+    LV_GetText(SelectedMainUrl, SelectedRow, 2)
+    LV_GetText(SelectedUrlWithFiles, SelectedRow, 3)
+
+    ; Remove the selected group from the ListView
+    LV_Delete(SelectedRow)
+
+    ; Read existing groups and write back without the deleted group
+    if FileExist(csvFileGroups)
+    {
+        FileRead, urlGroupsContent, %csvFileGroups%
+        newContent := ""
+        Loop, Parse, urlGroupsContent, `n, `r
+        {
+            if (A_LoopField = "")
+                continue ; Skip empty lines
+
+            StringSplit, group, A_LoopField, `,
+            if (group1 = SelectedExtensions && group2 = SelectedMainUrl && group3 = SelectedUrlWithFiles)
+                continue ; Skip the group to be deleted
+
+            newContent .= A_LoopField "`n" ; Keep all other groups
+        }
+
+        ; Write the updated content back to the file
+        FileDelete, %csvFileGroups%
+        FileAppend, %newContent%, %csvFileGroups%
+    }
+    else
+    {
+        MsgBox, 16, Error, No URL groups file found.
+        return
+    }
+
+    MsgBox, 64, Deletion Successful, The selected URL group has been deleted.
+return
+
+;------------------
+
+
+ClearFilter:
+    GuiControl,, filterText,  
+return
+
+ClearRegexFind:
+    GuiControl,, RegexFind,  
+return
+
+ClearRegexReplace:
+    GuiControl,, RegexReplace,  
+return
+
+GuiCancel:
+    ExitApp
+Return
+
+
+
+SelectFolder:
+    FileSelectFolder, downloadDir
+    if (downloadDir != "")
+        GuiControl,, DownloadDir, %downloadDir%
+return
+
+FilterChanged:
+    GuiControlGet, filterText, , FilterText
+    GuiControlGet, regexFilter, , RegexFilter
+    GOSUB, UpdateListView
+return
+
 esc::exitapp  
 
-GuiClose:
-exitapp
