@@ -5,13 +5,14 @@ anastasioualex@gmail.com
 Description:
             List new files from a website           (filtering out those already downloaded)
             Rename by regex before downloading      (the check for wether they were downloaded is by logging their original name to log.txt)
-            Filter the new list by text or regex    (//TODO save/load regex pairs)
-            Support links like www.url.com/file.txt and relative links like "/folder/file.txt"  (//TODO save/load mainUrl/filesURL)
+            Filter the new list by text or regex    (
+            Support links like www.url.com/file.txt and relative links like "/folder/file.txt"  
             Download selected files
             Optionally print                        (//TODO improve print function to allow for more filetypes, currently for pdf only)
 */
 
 #SingleInstance, force
+
 #include includes\Anchor.ahk
 
 TrayIcon := StrReplace("settings\" . A_ScriptName, ".ahk", ".ico")
@@ -825,3 +826,6 @@ GuiSize:
 return
 
 esc::exitapp  
+
+GuiClose:
+exitapp
