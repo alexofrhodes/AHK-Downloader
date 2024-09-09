@@ -226,6 +226,7 @@ IsFileLogged(fileURL) {
 
 LogDownload(fileUrl) {
     global
+    newText := ""
     FileRead, previousText, %logFile%
     if not (previousText = "")
         newText .= previousText "`n"
